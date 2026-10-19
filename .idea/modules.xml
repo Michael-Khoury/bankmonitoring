@@ -2,7 +2,8 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/bankmonitoring.iml" filepath="$PROJECT_DIR$/.idea/bankmonitoring.iml" />
+      <module fileurl="file://$PROJECT_DIR$/bankmonitoring/bankmonitoring.iml" filepath="$PROJECT_DIR$/bankmonitoring/bankmonitoring.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/bankmonitoring-combined.iml" filepath="$PROJECT_DIR$/.idea/bankmonitoring-combined.iml" />
     </modules>
   </component>
 </project>
