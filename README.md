@@ -1,42 +1,48 @@
 # Bank Transaction Monitoring System
 
-A Java/Spring Boot backend with REST APIs and PostgreSQL for managing users, accounts, and transactions, featuring rule-based checks for suspicious transaction activity.
+A Java-based transaction-monitoring project combining a Spring Boot REST API, PostgreSQL storage, and Apache Spark batch analysis to identify potentially suspicious banking activity.
 
 ## Overview
 
-This personal project explores REST API development, database integration, and service-layer business logic in a financial transaction-monitoring context.
+The project contains two components:
 
-## Features
+- **Spring Boot backend:** Works with users, accounts, and transactions, with a service-layer rule for detecting repeated high-value activity.
+- **Spark analysis:** Reads stored transactions from PostgreSQL through JDBC and filters high-value transactions for analysis.
 
-- REST API components for users, accounts, and transactions.
-- Separate controller, model, repository, and service layers.
-- PostgreSQL-backed data persistence.
-- Account-specific transaction checks using amount thresholds and recent activity.
-- A dedicated `FraudCheckService` for evaluating potentially suspicious transactions.
+Both components work with the same transaction data.
 
 ## Tech Stack
 
 | Technology | Purpose |
 | --- | --- |
-| Java | Backend application logic |
-| Spring Boot | Application framework and REST APIs |
+| Java | Backend and analysis logic |
+| Spring Boot | REST API and application framework |
 | PostgreSQL | Relational data storage |
-| Maven | Dependency management and build tooling |
+| Apache Spark | Batch transaction analysis |
+| JDBC | Spark-to-PostgreSQL connectivity |
+| Amazon RDS | Hosted PostgreSQL database used during development |
+| Maven | Dependency management and builds |
 | Postman | API testing |
 
-## Transaction Monitoring Logic
+## Backend Features
 
-The `isSuspicious(Transaction newTxn)` method evaluates an incoming transaction against stored transaction records.
+- REST API components for users, accounts, and transactions.
+- Separate controller, model, repository, and service layers.
+- PostgreSQL-backed persistence.
+- Account-specific checks using transaction amounts and recent activity.
+- A dedicated `FraudCheckService` for evaluating potentially suspicious transactions.
 
-It returns `true` when both conditions are met:
+### Suspicious-Activity Rule
+
+The `isSuspicious(Transaction newTxn)` method returns `true` when:
 
 1. The incoming transaction amount is **greater than 1,000**.
-2. At least **two stored transactions** meet all of the following criteria:
+2. At least **two stored transactions**:
    - Belong to the same account.
-   - Have an amount greater than 1,000.
-   - Have a timestamp later than the current time minus one minute.
+   - Have amounts greater than 1,000.
+   - Have timestamps later than the current time minus one minute.
 
-Otherwise, the method returns `false`.
+Otherwise, it returns `false`.
 
 | Incoming Amount | Qualifying Stored Transactions | Result |
 | --- | --- | --- |
@@ -45,34 +51,60 @@ Otherwise, the method returns `false`.
 | 1,500 | 1 | `false` |
 | 1,500 | 2 | `true` |
 
-The count reflects the records present in the repository when the method runs. If the incoming transaction has already been saved, it may be included in that count.
+The count depends on the records present when the check runs. If the incoming transaction has already been saved, it may be included in the count.
 
-A positive result indicates potentially suspicious activity; it does not establish that fraud has occurred.
+## Spark Analysis
 
-## Project Structure
+The `FraudAnalysis` application performs batch analysis of stored transaction data.
 
-Java source files are organized under `com.michael.bankmonitoring`.
+### Processing Steps
 
-| Package / File | Responsibility |
-| --- | --- |
-| `controller` | Handles API requests through `UserController`, `AccountController`, and `TransactionController`. |
-| `model` | Defines the `User`, `Account`, and `Transaction` domain models. |
-| `repository` | Provides data access through `UserRepository`, `AccountRepository`, and `TransactionRepository`. |
-| `service/FraudCheckService.java` | Evaluates the suspicious-transaction rule. |
-| `BankMonitoringApplication.java` | Spring Boot application entry point. |
-| `src/main/resources/application.properties` | Application and database configuration. |
+1. Starts a Spark session.
+2. Connects to PostgreSQL through JDBC.
+3. Loads the `transaction` table into a Spark DataFrame.
+4. Displays the schema and transaction records.
+5. Filters transactions using:
+
+   ```sql
+   amount > 1000
+   ```
+
+6. Displays the matching records.
+7. Stops the Spark session.
+
+The current implementation uses `local[*]`, allowing Spark to use the available local CPU cores.
+
+The Spark component applies an amount-based filter. The backend applies the separate account-and-time-window rule described above.
+
+## Repository Organization
+
+The repository contains the existing Spring Boot application alongside the Spark project.
+
+| Component | Main Classes | Responsibility |
+| --- | --- | --- |
+| Backend controllers | `UserController`, `AccountController`, `TransactionController` | Handle API requests |
+| Backend models | `User`, `Account`, `Transaction` | Represent domain data |
+| Backend repositories | `UserRepository`, `AccountRepository`, `TransactionRepository` | Provide database access |
+| Backend service | `FraudCheckService` | Evaluate suspicious transaction activity |
+| Backend entry point | `BankMonitoringApplication` | Start the Spring Boot application |
+| `spark-analysis/` | `FraudAnalysis` | Run batch transaction analysis |
+
+The backend and Spark component maintain their own Maven configurations.
 
 ## Getting Started
 
 ### Prerequisites
 
-- Java version compatible with the project's `pom.xml`.
-- A running PostgreSQL instance.
-- Database connection details configured in `src/main/resources/application.properties`.
+- Java versions compatible with each component's `pom.xml`.
+- A running PostgreSQL instance, locally or through Amazon RDS.
+- Database connection settings configured for both components.
+- Network access to the database.
 
-### Run the Application
+Store database credentials in environment variables or local configuration excluded from version control.
 
-Open a terminal in the directory containing `pom.xml` and the Maven wrapper files.
+### Run the Backend
+
+From the Spring Boot directory containing `pom.xml` and the Maven wrapper files:
 
 **Windows PowerShell:**
 
@@ -88,19 +120,24 @@ Open a terminal in the directory containing `pom.xml` and the Maven wrapper file
 
 Alternatively, run `BankMonitoringApplication` directly from your IDE.
 
-### Test the API
+Use Postman to test the routes defined in the controller classes.
 
-Use Postman to send requests to the routes defined in:
+### Run Spark Analysis
 
-- `UserController`
-- `AccountController`
-- `TransactionController`
+1. Open `spark-analysis/pom.xml` as a Maven project in your IDE.
+2. Load its dependencies and select a compatible JDK.
+3. Configure the JDBC connection to the PostgreSQL database containing the transaction data.
+4. Run the `main` method in `FraudAnalysis`.
+
+The application prints transaction data and matching high-value transactions to the console.
 
 ## Implementation Notes
 
-The current fraud-checking method retrieves records using `findAll()` and filters them with Java streams.
-
-Moving the account, amount, and timestamp filtering into a database query would reduce the amount of data loaded as the transaction history grows.
+- The Spark job performs **batch processing**.
+- Both components use **rule-based checks**.
+- A matching transaction indicates potentially suspicious activity; it does not establish that fraud occurred.
+- The backend currently filters records from `findAll()` using Java streams. Moving this filtering into a database query would reduce memory usage as transaction history grows.
+- CSV export code is included in the Spark source but is currently commented out.
 
 ## Author
 
